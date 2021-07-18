@@ -8,7 +8,9 @@ Wikipeadia link about [Radix Tree](https://en.wikipedia.org/wiki/Radix_tree).
 ## Usage
 
 ```rust
-let mut tr = new_trie::<u8>();
+use rstrie::{RSTrie};
+
+let mut tr = RSTrie::<u8>::new();
 tr.add("romane", 1);
 tr.add("romanus", 2);
 tr.add("romulus", 3);
@@ -33,13 +35,16 @@ The tree look like this, although in this library the keys/fragments and associa
 Associated values can be custom types like functions.
 
 ```rust
-type AValueType = fn(i32, i32) -> i32;
+use rstrie::{RSTrie};
+
+type FnType = fn(i32, i32) -> i32;
 
 fn add(x: i32, y: i32) -> i32 {
     x + y
 }
-let mut tr = new_trie::<AValueType>();
-let add_fn: AValueType = add;
+
+let mut tr = RSTrie::<FnType>::new();
+let add_fn: FnType = add;
 tr.add("add_fn", add_fn);
 let adder = tr.find("add_fn").unwrap().value.unwrap();
 assert_eq!(42, adder(20,22));
