@@ -2,21 +2,54 @@
 type CmpFrag = (Option<&'static str>,  Option<&'static str>, Option<&'static str>);
 
 #[derive(Clone, Default, Debug)]
-pub struct Node<T> {
+pub struct RSTrie<T> {
     frag: &'static str,
-    children: Vec<Node<T>>,
-    value: Option<T>
+    children: Vec<RSTrie<T>>,
+    pub value: Option<T>
 }
 
-impl<T> Node<T> {
+impl<T> RSTrie<T> {
+    /// Returns an empty Trie for the given type
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rstrie::{RSTrie};
+    ///
+    /// let mut trie = RSTrie::<u8>::new();
+    /// trie.add("/path/to/somewhere", 20);
+    /// let value = trie.find("/path/to/somewhere");
+    /// assert_eq!(20, value);
+    /// ```
     pub fn new() -> Self {
-        Node::<T> {
+        RSTrie::<T> {
             frag: "",
             value: None,
             children: vec![]
         }
     }
 
+    /// Add a path to the Trie and associate a value to it
+    ///
+    /// # Examples
+    ///
+    /// 
+    /// ```
+    /// use rstrie::{RSTrie};
+    ///
+    /// type MyFnType = fn(i32, i32) -> i32;
+    /// 
+    /// fn add(x: i32, y: i32) -> i32 {
+    ///    x + y
+    /// }
+    ///
+    /// let add_fn: MyFnType = add;
+    ///
+    /// let mut trie = RSTrie::<MyFnType>::new();
+    /// trie.add("add", add_fn);
+    /// let adder = trie.find("add").unwrap().value.unwrap();
+    /// assert_eq!(42, adder(20,22));
+    /// ```
     pub fn add(&mut self, path: &'static str, value: T)
         where T: Copy
     {
@@ -52,7 +85,28 @@ impl<T> Node<T> {
         self.children.push(Self{frag: path, value: Some(value), children: vec![]});
     }
 
-    pub fn find(&mut self, path: &'static str) -> Option<Node<T>>
+
+    /// Return the associated value for a path
+    ///
+    /// # Examples
+    /// 
+    /// ```
+    /// use rstrie::{RSTrie};
+    ///
+    /// type MyFnType = fn(i32, i32) -> i32;
+    /// 
+    /// fn add(x: i32, y: i32) -> i32 {
+    ///    x + y
+    /// }
+    ///
+    /// let add_fn: MyFnType = add;
+    ///
+    /// let mut trie = RSTrie::<MyFnType>::new();
+    /// trie.add("add", add_fn);
+    /// let adder = trie.find("add").unwrap().value.unwrap();
+    /// assert_eq!(42, adder(20,22));
+    /// ```
+    pub fn find(&mut self, path: &'static str) -> Option<RSTrie<T>>
     where T: Copy
     {
         // Self::find_in_node(&self, path, path.chars().count())
@@ -61,7 +115,7 @@ impl<T> Node<T> {
             if chars_left > 0 {
                 let striped_path = path.strip_prefix(self.frag).unwrap();
                 //Self::find_in_children(self, striped_path, chars_left)
-                // let mut found: Option<Node<T>> = None;
+                // let mut found: Option<RSTrie<T>> = None;
                 for child in self.children.iter_mut() {
                     let found = child.find(striped_path);
                     if found.is_some() { 
@@ -77,33 +131,6 @@ impl<T> Node<T> {
             None
         }
     }
-
-    // fn find_in_node(current_node: &Node<T>, path: &'static str, chars_left: usize) -> Option<Node<T>>
-    // where T: Copy
-    // {
-    //     if path.starts_with(current_node.frag) {
-    //         let chars_left = chars_left - current_node.frag.chars().count();
-    //         if chars_left > 0 {
-    //             let striped_path = path.strip_prefix(current_node.frag).unwrap();
-    //             Self::find_in_children(current_node, striped_path, chars_left)
-    //         } else {
-    //             Some(current_node.to_owned())
-    //         }
-    //     } else {
-    //         None
-    //     }
-    // }
-
-    // fn find_in_children(node: &Node<T>, path: &'static str, chars_left: usize) -> Option<Node<T>>
-    // where T: Copy
-    // {
-    //     let mut found: Option<Node<T>> = None;
-    //     for current_node in &node.children {
-    //         found = Self::find_in_node(current_node, path, chars_left);
-    //         if found.is_some() { break; }
-    //     }
-    //     found
-    // }
 
     /// return how many characters both string share at the beginning
     fn shared_pref_idx(lfrag: &'static str, rfrag: &'static str) -> Option<usize> {
@@ -127,7 +154,7 @@ impl<T> Node<T> {
         }
     }
     
-    // Return (shared_prefix, l_reminder, r_reminder)
+    /// Return (shared_prefix, l_reminder, r_reminder)
     fn cmp_frag(lfrag: &'static str, rfrag: &'static str) ->  CmpFrag {
         if let Some(shared_idx) = Self::shared_pref_idx(lfrag, rfrag) {
 
@@ -154,8 +181,8 @@ impl<T> Node<T> {
     }
 }
 
-pub fn new_trie<T>() -> Node<T> {
-    Node::<T>::new()
+pub fn new_trie<T>() -> RSTrie<T> {
+    RSTrie::<T>::new()
 }
 
 
@@ -171,26 +198,26 @@ mod tests {
 
     #[test]
     fn shared_pref() {
-        assert_eq!(Some(5), Node::<u8>::shared_pref_idx("romane", "romanus"));
+        assert_eq!(Some(5), RSTrie::<u8>::shared_pref_idx("romane", "romanus"));
     }
 
     #[test]
     fn cmp_frag_test() {
         assert_eq!(
             (Some("frag"), None, None), 
-            Node::<u8>::cmp_frag("frag", "frag"));
+            RSTrie::<u8>::cmp_frag("frag", "frag"));
         assert_eq!(
             (Some("frag"), Some("ment"), None), 
-            Node::<u8>::cmp_frag("fragment", "frag"));
+            RSTrie::<u8>::cmp_frag("fragment", "frag"));
         assert_eq!(
             (Some("frag"), None, Some("ance")), 
-            Node::<u8>::cmp_frag("frag", "fragance"));
+            RSTrie::<u8>::cmp_frag("frag", "fragance"));
         assert_eq!(
             (Some("frag"), Some("ment"), Some("ance")), 
-            Node::<u8>::cmp_frag("fragment", "fragance"));
+            RSTrie::<u8>::cmp_frag("fragment", "fragance"));
         assert_eq!(
             (None,None,None), 
-            Node::<u8>::cmp_frag("some", "none"));
+            RSTrie::<u8>::cmp_frag("some", "none"));
     }
 
     #[test]
@@ -289,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn tree_with_custom_value() {
+    fn tree_with_custom_value_test() {
         type AValueType = fn(i32, i32) -> i32;
 
         fn add(x: i32, y: i32) -> i32 {
