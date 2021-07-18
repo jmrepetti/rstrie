@@ -1,9 +1,9 @@
 
-type CmpPaths = (Option<&'static str>,  Option<&'static str>, Option<&'static str>);
+type CmpFrag = (Option<&'static str>,  Option<&'static str>, Option<&'static str>);
 
 #[derive(Clone, Default, Debug)]
 pub struct Node<T> {
-    key: &'static str,
+    frag: &'static str,
     children: Vec<Node<T>>,
     value: Option<T>
 }
@@ -11,25 +11,9 @@ pub struct Node<T> {
 impl<T> Node<T> {
     pub fn new() -> Self {
         Node::<T> {
-            key: "",
+            frag: "",
             value: None,
             children: vec![]
-        }
-    }
-
-    pub fn new_with(key: &'static str, value: Option<T>) -> Self {
-        Node::<T> {
-            key: key,
-            value: value,
-            children: vec![]
-        }
-    }
-
-    pub fn new_with_children(key: &'static str, value: Option<T>, children: Vec<Node<T>>) -> Self {
-        Node::<T> {
-            key: key,
-            value: value,
-            children: children
         }
     }
 
@@ -37,7 +21,7 @@ impl<T> Node<T> {
     where T: Copy
     {
         if self.children.is_empty() {
-            let new_node = Self::new_with(path, Some(value));
+            let new_node = Self{frag: path, value: Some(value), children: vec![]};
             self.children.push(new_node);
         } else {
             Self::add_to_node(path, value, self);
@@ -52,14 +36,14 @@ impl<T> Node<T> {
     }
 
     /// return how many characters both string share at the beginning
-    fn shared_chars_idx(path: &'static str, existing_key: &'static str) -> Option<usize> {
+    fn shared_pref_idx(lfrag: &'static str, rfrag: &'static str) -> Option<usize> {
 
         let mut counter = 0;
-        let mut path_iter = path.chars();
-        let mut frag_iter = existing_key.chars();
+        let mut lfrag_iter = lfrag.chars();
+        let mut rfrag_iter = rfrag.chars();
 
-        while let (Some(path_char), Some(frag_char)) = (path_iter.next(), frag_iter.next()) {
-            if path_char == frag_char {
+        while let (Some(lchar), Some(rchar)) = (lfrag_iter.next(), rfrag_iter.next()) {
+            if lchar == rchar {
                 counter = counter + 1;
             } else {
                 break;
@@ -72,12 +56,19 @@ impl<T> Node<T> {
             None
         }
     }
+    
+    // Return (shared_prefix, l_reminder, r_reminder)
+    // e.g
+    // (Some("frag"), None, None) ->  lfra == "frag", rfrag == "frag"
+    // (Some("frag"), Some("ment"), None) ->  lfrag == "fragment", rfrag == "frag"
+    // (Some("frag"), None, Some("ment")) ->  lfrag == "frag", rfrag == "fragment"
+    // (Some("frag"), Some("ment"), Some("ance")) ->  lfrag == "fragment", rfrag == "fragance"
+    // (None, None, None) ->  lfrag == "frag", rfrag == "peach"
+    fn cmp_frag(lfrag: &'static str, rfrag: &'static str) ->  CmpFrag {
+        if let Some(shared_idx) = Self::shared_pref_idx(lfrag, rfrag) {
 
-    fn cmp_paths(add_path: &'static str, existing_key: &'static str) ->  CmpPaths {
-        if let Some(shared_idx) = Self::shared_chars_idx(add_path, existing_key) {
-
-            let (shared_prefix, l_reminder) = add_path.split_at(shared_idx);
-            let (_, r_reminder) = existing_key.split_at(shared_idx);
+            let (shared_prefix, l_reminder) = lfrag.split_at(shared_idx);
+            let (_, r_reminder) = rfrag.split_at(shared_idx);
 
             let left = if l_reminder.is_empty() {
                 None
@@ -101,49 +92,48 @@ impl<T> Node<T> {
     fn add_to_node(path: &'static str, value: T, node: &mut Node<T>)
         where T: Copy
     {
-        let mut new_leaf = true;
+        let mut added_frag = false;
         for (child_idx, child) in node.children.iter_mut().enumerate() {
-            match Self::cmp_paths(path, child.key) {
-                (Some(_), None, None) => {
+            match Self::cmp_frag(path, child.frag) {
+                (None, _, _) => { continue; }, //no match, next
+                (Some(_), None, None) => { // override existing value
                     child.value = Some(value);
                     return ()
                 },
-                (None, _, _) => { continue; }, //no match, continue with next child
                 (Some(_), Some(path_reminder), None) => { // serch under this node and add
                     Self::add_to_node(path_reminder, value, child);
-                    new_leaf = false;
+                    added_frag = true;
                     break;
                 },
-                (Some(shared_prefix), maybe_path_reminder, Some(key_reminder)) => {
+                (Some(shared_prefix), Some(path_reminder), Some(frag_rem)) => {
                     // child get updated with a new key
-                    child.key = key_reminder;
+                    child.frag = frag_rem;
                     // child(and children) will move to new_node children
                     let mut children = vec![child.clone()];
-
-                    if let Some(path_reminder) = maybe_path_reminder {
-                        // if path_reminder exist, it should be added as child node of new_node
-                        let new_child_node = Self::new_with(path_reminder, Some(value));
-                        children.push(new_child_node)
-                    };
-
-                    // if given path become a new prefix node, it should keep value
-                    let new_node = if maybe_path_reminder.is_none() {
-                        Self::new_with_children(shared_prefix, Some(value), children)
-                    // if given path become a new prefix node, it should keep value
-                    } else {
-                        Self::new_with_children(shared_prefix, None, children)
-                    };
-
+                    let new_child_node = Self{frag: path_reminder, value: Some(value), children: vec![]};
+                    children.push(new_child_node);
+                    let new_node = Self{frag: shared_prefix, value: None, children};
                     node.children.remove(child_idx);
                     node.children.push(new_node);
-                    new_leaf = false;
+                    added_frag = true;
+                    break;
+                },
+                (Some(shared_prefix), None, Some(frag_rem)) => {
+                    // child get updated with a new key
+                    child.frag = frag_rem;
+                    // child(and children) will move to new_node children
+                    let mut children = vec![child.clone()];
+                    let new_node = Self{frag: shared_prefix, value: Some(value), children};
+                    node.children.remove(child_idx);
+                    node.children.push(new_node);
+                    added_frag = true;
                     break;
                 }
             };
         }
 
-        if new_leaf {
-            let new_node = Self::new_with(path, Some(value));
+        if !added_frag {
+            let new_node = Self{frag: path, value: Some(value), children: vec![]};
             node.children.push(new_node);
         }
     }
@@ -151,10 +141,10 @@ impl<T> Node<T> {
     fn find_in_node(current_node: &Node<T>, path: &'static str, chars_left: usize) -> Option<Node<T>>
         where T: Copy
     {
-        if path.starts_with(current_node.key) {
-            let chars_left = chars_left - current_node.key.chars().count();
+        if path.starts_with(current_node.frag) {
+            let chars_left = chars_left - current_node.frag.chars().count();
             if chars_left > 0 {
-                let striped_path = path.strip_prefix(current_node.key).unwrap();
+                let striped_path = path.strip_prefix(current_node.frag).unwrap();
                 Self::find_in_children(current_node, striped_path, chars_left)
             } else {
                 Some(current_node.to_owned())
@@ -188,26 +178,26 @@ mod tests {
     #[test]
     fn new_default_tree() {
         let mut tr = new_trie::<u8>();
-        assert_eq!("", tr.key);
+        assert_eq!("", tr.frag);
     }
 
     #[test]
-    fn shared_chars() {
-        assert_eq!(Some(5), Node::<u8>::shared_chars_idx("romane", "romanus"));
+    fn shared_pref() {
+        assert_eq!(Some(5), Node::<u8>::shared_pref_idx("romane", "romanus"));
     }
 
     #[test]
     fn compare_paths() {
         // Same string
-        assert_eq!((Some("abc"), None, None), Node::<u8>::cmp_paths("abc", "abc"));
+        assert_eq!((Some("abc"), None, None), Node::<u8>::cmp_frag("abc", "abc"));
         // Shared prefix with remainder on the input string
-        assert_eq!((Some("abc"), Some("d"), None), Node::<u8>::cmp_paths("abcd", "abc"));
+        assert_eq!((Some("abc"), Some("d"), None), Node::<u8>::cmp_frag("abcd", "abc"));
         // Shared prefix with remainder on the existing prefix, new prefix.
-        assert_eq!((Some("ab"), None, Some("c")), Node::<u8>::cmp_paths("ab", "abc"));
+        assert_eq!((Some("ab"), None, Some("c")), Node::<u8>::cmp_frag("ab", "abc"));
         // Shared prefix with remainder on  input and existing string
-        assert_eq!((Some("abc"), Some("def"), Some("hij")), Node::<u8>::cmp_paths("abcdef", "abchij"));
+        assert_eq!((Some("abc"), Some("def"), Some("hij")), Node::<u8>::cmp_frag("abcdef", "abchij"));
         // No match
-        assert_eq!((None,None,None), Node::<u8>::cmp_paths("some", "noen"));
+        assert_eq!((None,None,None), Node::<u8>::cmp_frag("some", "noen"));
     }
 
     #[test]
@@ -233,10 +223,10 @@ mod tests {
     fn new_insertion_becomes_prefix_test() {
         let mut tr = new_trie::<u8>();
         tr.add("/abc", 1);
-        assert_eq!("/abc", tr.children[0].key);
+        assert_eq!("/abc", tr.children[0].frag);
         tr.add("/ab", 2);
-        assert_eq!("/ab", tr.children[0].key);
-        assert_eq!("c", tr.children[0].children[0].key);
+        assert_eq!("/ab", tr.children[0].frag);
+        assert_eq!("c", tr.children[0].children[0].frag);
         assert_eq!(Some(2), tr.find("/ab").unwrap().value);
         assert_eq!(Some(1), tr.find("/abc").unwrap().value);
     }
@@ -245,10 +235,10 @@ mod tests {
     fn new_insertion_added_to_existing_prefix_test() {
         let mut tr = new_trie::<u8>();
         tr.add("/abc", 1);
-        assert_eq!("/abc", tr.children[0].key);
+        assert_eq!("/abc", tr.children[0].frag);
         tr.add("/abcdef", 2);
-        assert_eq!("/abc", tr.children[0].key);
-        assert_eq!("def", tr.children[0].children[0].key);
+        assert_eq!("/abc", tr.children[0].frag);
+        assert_eq!("def", tr.children[0].children[0].frag);
         assert_eq!(Some(1), tr.find("/abc").unwrap().value);
         assert_eq!(Some(2), tr.find("/abcdef").unwrap().value);
     }
@@ -258,9 +248,9 @@ mod tests {
         let mut tr = new_trie::<u8>();
         tr.add("/abc", 1);
         tr.add("/def", 2);
-        assert_eq!("/", tr.children[0].key);
-        assert_eq!("abc", tr.children[0].children[0].key);
-        assert_eq!("def", tr.children[0].children[1].key);
+        assert_eq!("/", tr.children[0].frag);
+        assert_eq!("abc", tr.children[0].children[0].frag);
+        assert_eq!("def", tr.children[0].children[1].frag);
         assert_eq!(Some(1), tr.find("/abc").unwrap().value);
         assert_eq!(Some(2), tr.find("/def").unwrap().value);
         assert!(tr.children[0].children[0].children.is_empty());
